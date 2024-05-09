@@ -3,7 +3,7 @@
 
 /*
  * Simon Says game in Verilog. Wokwi Simulation project:
- * https://wokwi.com/projects/395431892849488897
+ * https://wokwi.com/projects/397436605640509441
  */
 
 `default_nettype none
@@ -169,14 +169,15 @@ module simon (
   localparam StatePlay = 2;
   localparam StatePlayWait = 3;
   localparam StateUserWait = 4;
-  localparam StateUserInput = 5;
-  localparam StateNextLevel = 6;
-  localparam StateGameOver = 7;
+  localparam StateWaitButtonRelease = 5;
+  localparam StateUserInput = 6;
+  localparam StateNextLevel = 7;
+  localparam StateGameOver = 8;
 
   reg [4:0] seq_counter;
   reg [4:0] seq_length;
   reg [1:0] seq[MAX_GAME_LEN-1:0];
-  reg [2:0] state;
+  reg [3:0] state;
 
   reg [15:0] tick_counter;
   reg [9:0] millis_counter;
@@ -185,6 +186,8 @@ module simon (
 
   reg [1:0] next_random;
   reg [1:0] user_input;
+  reg [3:0] prev_btn;
+  reg button_released;
   reg score_inc;
   reg score_rst;
   reg score_ena;
@@ -218,6 +221,9 @@ module simon (
       state <= StatePowerOn;
       seq[0] <= 0;
       led <= 4'b0000;
+      user_input <= 0;
+      prev_btn <= 0;
+      button_released <= 0;
       score_inc <= 0;
       score_rst <= 0;
       score_ena <= 0;
@@ -282,6 +288,8 @@ module simon (
           millis_counter <= 0;
           if (btn != 0) begin
             state <= StateUserInput;
+            prev_btn <= btn;
+            button_released <= 0;
             seq[seq_length] <= next_random;
             case (btn)
               4'b0001: user_input <= 0;
@@ -296,6 +304,9 @@ module simon (
           led <= 0;
           led[user_input] <= 1'b1;
           sound_freq <= GAME_TONES[user_input];
+          if (millis_counter > 50 && btn != prev_btn) begin
+            button_released <= 1;
+          end
           if (millis_counter == 300) begin
             sound_freq <= 0;
             if (user_input == seq[seq_counter]) begin
@@ -306,11 +317,20 @@ module simon (
                 score_inc <= 1;
               end else begin
                 seq_counter <= seq_counter + 1;
-                state <= StateUserWait;
+                state <= ~button_released && btn == 0 ? StateUserWait : StateWaitButtonRelease;
               end
             end else begin
               millis_counter <= 0;
               state <= StateGameOver;
+            end
+          end
+        end
+        StateWaitButtonRelease: begin
+          millis_counter <= 0;
+          if (btn != prev_btn) begin
+            millis_counter <= millis_counter + 1;  // debounce
+            if (millis_counter == 10) begin
+              state <= StateUserWait;
             end
           end
         end
